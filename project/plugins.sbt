@@ -4,6 +4,10 @@ resolvers += Resolver.url("scalasbt", new URL("http://scalasbt.artifactoryonline
 
 resolvers += "jgit-repo" at "http://download.eclipse.org/jgit/maven"
 
+resolvers += Classpaths.typesafeResolver
+
+addSbtPlugin("com.typesafe.sbtosgi" % "sbtosgi" % "0.1.0")
+
 libraryDependencies += "net.databinder" %% "dispatch-http" % "0.8.6"
 
 
