@@ -4,6 +4,7 @@ import partest._
 import SameTest._
 
 import com.typesafe.sbtosgi.OsgiPlugin.osgiSettings
+import com.typesafe.sbtosgi.OsgiKeys
 
 object ScalaBuild extends Build with Layers {
   // New tasks/settings specific to the scala build.
@@ -101,12 +102,13 @@ object ScalaBuild extends Build with Layers {
   )
     
   // Settings used to make sure publishing goes smoothly.
-  def publishSettings: Seq[Setting[_]] = Seq(
+  def publishSettings: Seq[Setting[_]] = osgiSettings ++ Seq(
     ivyScala ~= ((is: Option[IvyScala]) => is.map(_.copy(checkExplicit = false))),
     pomIncludeRepository := (_ => false),
     publishMavenStyle := true,
     makePomConfiguration <<= makePomConfiguration apply (_.copy(configurations = Some(Seq(Compile, Default)))),
-    pomExtra := epflPomExtra
+    pomExtra := epflPomExtra,
+    OsgiKeys.exportPackage := Seq("*")
   )
 
   // Settings for root project.  These are aggregate tasks against the rest of the build.
@@ -248,7 +250,7 @@ object ScalaBuild extends Build with Layers {
   lazy val actors = Project("actors", file(".")) settings(dependentProjectSettings:_*) dependsOn(forkjoin % "provided")
   lazy val dbc = Project("dbc", file(".")) settings(dependentProjectSettings:_*)
   // TODO - Remove actors dependency from pom...
-  lazy val swing = Project("swing", file(".")) settings(dependentProjectSettings:_*) settings(osgiSettings:_*) dependsOn(actors % "provided")
+  lazy val swing = Project("swing", file(".")) settings(dependentProjectSettings:_*) dependsOn(actors % "provided")
   // This project will generate man pages (in man1 and html) for scala.    
   lazy val manmakerSettings: Seq[Setting[_]] = dependentProjectSettings :+ externalDeps
   lazy val manmaker = Project("manual", file(".")) settings(manmakerSettings:_*)
@@ -256,12 +258,12 @@ object ScalaBuild extends Build with Layers {
   // Things that compile against the compiler.
   lazy val compilerDependentProjectSettings = dependentProjectSettings ++ Seq(quickScalaCompilerDependency, addCheaterDependency("scala-compiler"))
   lazy val partestSettings = compilerDependentProjectSettings :+ externalDeps
-  lazy val partest = Project("partest", file(".")) settings(partestSettings:_*) settings(osgiSettings:_*) dependsOn(actors,forkjoin,scalap)
+  lazy val partest = Project("partest", file(".")) settings(partestSettings:_*) dependsOn(actors,forkjoin,scalap)
   lazy val scalapSettings = compilerDependentProjectSettings ++ Seq(
     name := "scalap",
     exportJars := true
   )
-  lazy val scalap = Project("scalap", file(".")) settings(scalapSettings:_*) settings(osgiSettings:_*)
+  lazy val scalap = Project("scalap", file(".")) settings(scalapSettings:_*)
 
   // --------------------------------------------------------------
   //  Continuations plugin + library
@@ -273,7 +275,7 @@ object ScalaBuild extends Build with Layers {
     name := "continuations"  // Note: This artifact is directly exported.
 
   )
-  lazy val continuationsPlugin = Project("continuations-plugin", file(".")) settings(continuationsPluginSettings:_*) settings(osgiSettings:_*)
+  lazy val continuationsPlugin = Project("continuations-plugin", file(".")) settings(continuationsPluginSettings:_*)
   lazy val continuationsLibrarySettings = dependentProjectSettings ++ Seq(
     scalaSource in Compile <<= baseDirectory(_ / "src/continuations/library/"),
     scalacOptions in Compile <++= (exportedProducts in Compile in continuationsPlugin) map { 
@@ -281,8 +283,6 @@ object ScalaBuild extends Build with Layers {
     }
   )
   lazy val continuationsLibrary = Project("continuations-library", file(".")) settings(continuationsLibrarySettings:_*)
-
-  // TODO - OSGi Manifest
 
   // --------------------------------------------------------------
   //  Real Library Artifact
@@ -301,7 +301,7 @@ object ScalaBuild extends Build with Layers {
     fullClasspath in Runtime <<= (exportedProducts in Compile).identity,
     quickScalaInstance,
     target <<= (baseDirectory, name) apply (_ / "target" / _)
-  ) ++ osgiSettings
+  )
   lazy val scalaLibrary = Project("scala-library", file(".")) settings(publishSettings:_*) settings(scalaLibArtifactSettings:_*)
 
   // --------------------------------------------------------------
@@ -317,7 +317,7 @@ object ScalaBuild extends Build with Layers {
     fullClasspath in Runtime <<= (exportedProducts in Compile).identity,
     quickScalaInstance,
     target <<= (baseDirectory, name) apply (_ / "target" / _)
-  ) ++ osgiSettings
+  )
   lazy val scalaCompiler = Project("scala-compiler", file(".")) settings(publishSettings:_*) settings(scalaBinArtifactSettings:_*) dependsOn(scalaLibrary)
   lazy val fullQuickScalaReference = makeScalaReference("pack", scalaLibrary, scalaCompiler, fjbg)
 
