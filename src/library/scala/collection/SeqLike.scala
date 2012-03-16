@@ -59,7 +59,7 @@ import scala.math.Ordering
  *  @define orderDependent
  *  @define orderDependentFold
  */
-trait SeqLike[+A, +Repr] extends IterableLike[A, Repr] with GenSeqLike[A, Repr] with Parallelizable[A, ParSeq[A]] { self =>
+trait SeqLike[+A, +Repr] extends Any with IterableLike[A, Repr] with GenSeqLike[A, Repr] with Parallelizable[A, ParSeq[A]] { self =>
 
   override protected[this] def thisCollection: Seq[A] = this.asInstanceOf[Seq[A]]
   override protected[this] def toCollection(repr: Repr): Seq[A] = repr.asInstanceOf[Seq[A]]
@@ -152,7 +152,8 @@ trait SeqLike[+A, +Repr] extends IterableLike[A, Repr] with GenSeqLike[A, Repr] 
       if (!hasNext)
         Iterator.empty.next
 
-      val result = (self.newBuilder ++= elms).result
+      val forcedElms = new mutable.ArrayBuffer[A](elms.size) ++= elms
+      val result = (self.newBuilder ++= forcedElms).result
       var i = idxs.length - 2
       while(i >= 0 && idxs(i) >= idxs(i+1))
         i -= 1

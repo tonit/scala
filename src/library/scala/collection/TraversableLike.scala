@@ -64,7 +64,8 @@ import parallel.ParIterable
  *  @define Coll Traversable
  *  @define coll traversable collection
  */
-trait TraversableLike[+A, +Repr] extends HasNewBuilder[A, Repr]
+trait TraversableLike[+A, +Repr] extends Any
+                                    with HasNewBuilder[A, Repr]
                                     with FilterMonadic[A, Repr]
                                     with TraversableOnce[A]
                                     with GenTraversableLike[A, Repr]
@@ -535,7 +536,7 @@ trait TraversableLike[+A, +Repr] extends HasNewBuilder[A, Repr]
     val b = newBuilder
     var go = false
     for (x <- this) {
-      if (!p(x)) go = true
+      if (!go && !p(x)) go = true
       if (go) b += x
     }
     b.result
@@ -708,6 +709,9 @@ trait TraversableLike[+A, +Repr] extends HasNewBuilder[A, Repr]
     /** Builds a new collection by applying a function to all elements of the
      *  outer $coll containing this `WithFilter` instance that satisfy
      *  predicate `p` and concatenating the results.
+     *
+     *  The type of the resulting collection will be guided by the static type
+     *  of the outer $coll.
      *
      *  @param f      the function to apply to each element.
      *  @tparam B     the element type of the returned collection.

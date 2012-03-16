@@ -107,7 +107,15 @@ abstract class TreeInfo {
   @deprecated("Use isExprSafeToInline instead", "2.10.0")
   def isPureExpr(tree: Tree) = isExprSafeToInline(tree)
 
-  def zipMethodParamsAndArgs(params: List[Symbol], args: List[Tree]): List[(Symbol, Tree)] = {
+  def zipMethodParamsAndArgs(params: List[Symbol], args: List[Tree]): List[(Symbol, Tree)] =
+    mapMethodParamsAndArgs(params, args)((param, arg) => ((param, arg)))
+
+  def mapMethodParamsAndArgs[R](params: List[Symbol], args: List[Tree])(f: (Symbol, Tree) => R): List[R] = {
+    val b = List.newBuilder[R]
+    foreachMethodParamAndArg(params, args)((param, arg) => b += f(param, arg))
+    b.result
+  }
+  def foreachMethodParamAndArg(params: List[Symbol], args: List[Tree])(f: (Symbol, Tree) => Unit): Boolean = {
     val plen   = params.length
     val alen   = args.length
     def fail() = {
@@ -116,25 +124,27 @@ abstract class TreeInfo {
         "  params = " + params + "\n" +
         "    args = " + args + "\n"
       )
-      params zip args
+      false
     }
 
-    if (plen == alen) params zip args
-    else if (params.isEmpty) fail
+    if (plen == alen) foreach2(params, args)(f)
+    else if (params.isEmpty) return fail
     else if (isVarArgsList(params)) {
       val plenInit = plen - 1
       if (alen == plenInit) {
         if (alen == 0) Nil        // avoid calling mismatched zip
-        else params.init zip args
+        else foreach2(params.init, args)(f)
       }
-      else if (alen < plenInit) fail
+      else if (alen < plenInit) return fail
       else {
-        val front = params.init zip (args take plenInit)
-        val back  = args drop plenInit map (a => (params.last, a))
-        front ++ back
+        foreach2(params.init, args take plenInit)(f)
+        val remainingArgs = args drop plenInit
+        foreach2(List.fill(remainingArgs.size)(params.last), remainingArgs)(f)
       }
     }
-    else fail
+    else return fail
+
+    true
   }
 
   /**
@@ -144,22 +154,28 @@ abstract class TreeInfo {
    * applies: for instance Apply(fn @ Apply(Apply(_, _), _), args) implies args
    * correspond to the third parameter list.
    *
+   * The argument fn is the function part of the apply node being considered.
+   *
    * Also accounts for varargs.
    */
+  private def applyMethodParameters(fn: Tree): List[Symbol] = {
+    val depth  = applyDepth(fn)
+    // There could be applies which go beyond the parameter list(s),
+    // being applied to the result of the method call.
+    // !!! Note that this still doesn't seem correct, although it should
+    // be closer than what it replaced.
+    if (depth < fn.symbol.paramss.size) fn.symbol.paramss(depth)
+    else if (fn.symbol.paramss.isEmpty) Nil
+    else fn.symbol.paramss.last
+  }
+
   def zipMethodParamsAndArgs(t: Tree): List[(Symbol, Tree)] = t match {
-    case Apply(fn, args) =>
-      val depth  = applyDepth(fn)
-      // There could be applies which go beyond the parameter list(s),
-      // being applied to the result of the method call.
-      // !!! Note that this still doesn't seem correct, although it should
-      // be closer than what it replaced.
-      val params = (
-        if (depth < fn.symbol.paramss.size) fn.symbol.paramss(depth)
-        else if (fn.symbol.paramss.isEmpty) Nil
-        else fn.symbol.paramss.last
-      )
-      zipMethodParamsAndArgs(params, args)
-    case _  => Nil
+    case Apply(fn, args) => zipMethodParamsAndArgs(applyMethodParameters(fn), args)
+    case _               => Nil
+  }
+  def foreachMethodParamAndArg(t: Tree)(f: (Symbol, Tree) => Unit): Unit = t match {
+    case Apply(fn, args) => foreachMethodParamAndArg(applyMethodParameters(fn), args)(f)
+    case _               =>
   }
 
   /** Is symbol potentially a getter of a variable?
@@ -176,7 +192,7 @@ abstract class TreeInfo {
   def isVariableOrGetter(tree: Tree) = {
     def sym       = tree.symbol
     def isVar     = sym.isVariable
-    def isGetter  = mayBeVarGetter(sym) && sym.owner.info.member(nme.getterToSetter(sym.name)) != NoSymbol
+    def isGetter  = mayBeVarGetter(sym) && sym.owner.info.member(nme.getterToSetter(sym.name.toTermName)) != NoSymbol
 
     tree match {
       case Ident(_)         => isVar
@@ -424,15 +440,6 @@ abstract class TreeInfo {
       EmptyTree
   }
 
-  /** Is the tree Predef, scala.Predef, or _root_.scala.Predef?
-   */
-  def isPredefExpr(t: Tree) = t match {
-    case Ident(nme.Predef)                                          => true
-    case Select(Ident(nme.scala_), nme.Predef)                      => true
-    case Select(Select(Ident(nme.ROOTPKG), nme.scala_), nme.Predef) => true
-    case _                                                          => false
-  }
-
   /** Does list of trees start with a definition of
    *  a class of module with given name (ignoring imports)
    */
@@ -452,7 +459,7 @@ abstract class TreeInfo {
     // Top-level definition whose leading imports include Predef.
     def containsLeadingPredefImport(defs: List[Tree]): Boolean = defs match {
       case PackageDef(_, defs1) :: _ => containsLeadingPredefImport(defs1)
-      case Import(expr, _) :: rest   => isPredefExpr(expr) || containsLeadingPredefImport(rest)
+      case Import(expr, _) :: rest   => isReferenceToPredef(expr) || containsLeadingPredefImport(rest)
       case _                         => false
     }
 
@@ -463,7 +470,6 @@ abstract class TreeInfo {
     }
 
     (  isUnitInScala(body, nme.Predef)
-    || isUnitInScala(body, tpnme.ScalaObject)
     || containsLeadingPredefImport(List(body)))
   }
 

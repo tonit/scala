@@ -8,23 +8,22 @@ package api
 
 import scala.collection.mutable.ListBuffer
 
-//import scala.tools.nsc.util.{ FreshNameCreator, HashSet, SourceFile }
-
-trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
+// Syncnote: Trees are currently not thread-safe.
+trait Trees { self: Universe =>
 
   private[scala] var nodeCount = 0
 
-  type Modifiers <: AbsModifiers
+  type Modifiers >: Null <: AbsModifiers
 
   abstract class AbsModifiers {
-    def hasModifier(mod: Modifier.Value): Boolean
-    def allModifiers: Set[Modifier.Value]
+    def modifiers: Set[Modifier]
+    def hasModifier(mod: Modifier): Boolean
     def privateWithin: Name  // default: EmptyTypeName
     def annotations: List[Tree] // default: List()
     def mapAnnotations(f: List[Tree] => List[Tree]): Modifiers
   }
 
-  def Modifiers(mods: Set[Modifier.Value] = Set(),
+  def Modifiers(mods: Set[Modifier] = Set(),
                 privateWithin: Name = EmptyTypeName,
                 annotations: List[Tree] = List()): Modifiers
 
@@ -310,7 +309,7 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
    *  quite frequently called modules to reduce ambiguity.
    */
   case class ModuleDef(mods: Modifiers, name: TermName, impl: Template)
-       extends ImplDef
+        extends ImplDef
 
   /** A common base class for ValDefs and DefDefs.
    */
@@ -320,8 +319,13 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
     def rhs: Tree
   }
 
-  /** A value definition (this includes vars as well, which differ from
-   *  vals only in having the MUTABLE flag set in their Modifiers.)
+  /** Broadly speaking, a value definition.  All these are encoded as ValDefs:
+   *
+   *   - immutable values, e.g. "val x"
+   *   - mutable values, e.g. "var x" - the MUTABLE flag set in mods
+   *   - lazy values, e.g. "lazy val x" - the LAZY flag set in mods
+   *   - method parameters, see vparamss in DefDef - the PARAM flag is set in mods
+   *   - explicit self-types, e.g. class A { self: Bar => } - !!! not sure what is set.
    */
   case class ValDef(mods: Modifiers, name: TermName, tpt: Tree, rhs: Tree) extends ValOrDefDef
 
@@ -391,7 +395,6 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
     //   {
     //      def bar  // owner is local dummy
     //   }
-    // System.err.println("TEMPLATE: " + parents)
   }
 
   /** Block of expressions (semicolon separated expressions) */
@@ -440,6 +443,12 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
   case class Assign(lhs: Tree, rhs: Tree)
        extends TermTree
 
+  /** Either an assignment or a named argument. Only appears in argument lists,
+   *  eliminated by typecheck (doTypedApply)
+   */
+  case class AssignOrNamedArg(lhs: Tree, rhs: Tree)
+       extends TermTree
+
   /** Conditional expression */
   case class If(cond: Tree, thenp: Tree, elsep: Tree)
        extends TermTree
@@ -476,6 +485,20 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
    *  @param tpt    a class type
    */
   case class New(tpt: Tree) extends TermTree
+
+  /** Factory method for object creation `new tpt(args_1)...(args_n)`
+   *  A `New(t, as)` is expanded to: `(new t).<init>(as)`
+   */
+  def New(tpt: Tree, argss: List[List[Tree]]): Tree = {
+    // todo. we need to expose names in scala.reflect.api
+    val superRef: Tree = Select(New(tpt), nme.CONSTRUCTOR)
+    if (argss.isEmpty) Apply(superRef, Nil)
+    else (superRef /: argss) (Apply)
+  }
+  /** 0-1 argument list new, based on a type.
+   */
+  def New(tpe: Type, args: Tree*): Tree =
+    New(TypeTree(tpe), List(args.toList))
 
   /** Type annotation, eliminated by explicit outer */
   case class Typed(expr: Tree, tpt: Tree)
@@ -538,15 +561,24 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
     // The symbol of a This is the class to which the this refers.
     // For instance in C.this, it would be C.
 
+  def This(sym: Symbol): Tree =
+    This(sym.name.toTypeName) setSymbol sym
+
   /** Designator <qualifier> . <name> */
   case class Select(qualifier: Tree, name: Name)
        extends RefTree
+
+  def Select(qualifier: Tree, name: String): Select =
+    Select(qualifier, newTermName(name))
 
   def Select(qualifier: Tree, sym: Symbol): Select =
     Select(qualifier, sym.name) setSymbol sym
 
   /** Identifier <name> */
-  case class Ident(name: Name) extends RefTree { }
+  case class Ident(name: Name) extends RefTree
+
+  def Ident(name: String): Ident =
+    Ident(newTermName(name))
 
   def Ident(sym: Symbol): Ident =
     Ident(sym.name) setSymbol sym
@@ -624,12 +656,113 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
   }
 
   def TypeTree(tp: Type): TypeTree = TypeTree() setType tp
-  
+
+  /** An empty deferred value definition corresponding to:
+   *    val _: _
+   *  This is used as a placeholder in the `self` parameter Template if there is
+   *  no definition of a self value of self type.
+   */
   def emptyValDef: ValDef
 
   // ------ traversers, copiers, and transformers ---------------------------------------------
 
   val treeCopy = newLazyTreeCopier
+
+  def copyDefDef(tree: Tree)(
+    mods: Modifiers              = null,
+    name: Name                   = null,
+    tparams: List[TypeDef]       = null,
+    vparamss: List[List[ValDef]] = null,
+    tpt: Tree                    = null,
+    rhs: Tree                    = null
+  ): DefDef = tree match {
+    case DefDef(mods0, name0, tparams0, vparamss0, tpt0, rhs0) =>
+      treeCopy.DefDef(tree,
+        if (mods eq null) mods0 else mods,
+        if (name eq null) name0 else name,
+        if (tparams eq null) tparams0 else tparams,
+        if (vparamss eq null) vparamss0 else vparamss,
+        if (tpt eq null) tpt0 else tpt,
+        if (rhs eq null) rhs0 else rhs
+      )
+    case t =>
+      sys.error("Not a DefDef: " + t + "/" + t.getClass)
+  }
+  def copyValDef(tree: Tree)(
+    mods: Modifiers = null,
+    name: Name      = null,
+    tpt: Tree       = null,
+    rhs: Tree       = null
+  ): ValDef = tree match {
+    case ValDef(mods0, name0, tpt0, rhs0) =>
+      treeCopy.ValDef(tree,
+        if (mods eq null) mods0 else mods,
+        if (name eq null) name0 else name,
+        if (tpt eq null) tpt0 else tpt,
+        if (rhs eq null) rhs0 else rhs
+      )
+    case t =>
+      sys.error("Not a ValDef: " + t + "/" + t.getClass)
+  }
+  def copyClassDef(tree: Tree)(
+    mods: Modifiers        = null,
+    name: Name             = null,
+    tparams: List[TypeDef] = null,
+    impl: Template         = null
+  ): ClassDef = tree match {
+    case ClassDef(mods0, name0, tparams0, impl0) =>
+      treeCopy.ClassDef(tree,
+        if (mods eq null) mods0 else mods,
+        if (name eq null) name0 else name,
+        if (tparams eq null) tparams0 else tparams,
+        if (impl eq null) impl0 else impl
+      )
+    case t =>
+      sys.error("Not a ClassDef: " + t + "/" + t.getClass)
+  }
+
+  def deriveDefDef(ddef: Tree)(applyToRhs: Tree => Tree): DefDef = ddef match {
+    case DefDef(mods0, name0, tparams0, vparamss0, tpt0, rhs0) =>
+      treeCopy.DefDef(ddef, mods0, name0, tparams0, vparamss0, tpt0, applyToRhs(rhs0))
+    case t =>
+      sys.error("Not a DefDef: " + t + "/" + t.getClass)
+  }
+  def deriveValDef(vdef: Tree)(applyToRhs: Tree => Tree): ValDef = vdef match {
+    case ValDef(mods0, name0, tpt0, rhs0) =>
+      treeCopy.ValDef(vdef, mods0, name0, tpt0, applyToRhs(rhs0))
+    case t =>
+      sys.error("Not a ValDef: " + t + "/" + t.getClass)
+  }
+  def deriveTemplate(templ: Tree)(applyToBody: List[Tree] => List[Tree]): Template = templ match {
+    case Template(parents0, self0, body0) =>
+      treeCopy.Template(templ, parents0, self0, applyToBody(body0))
+    case t =>
+      sys.error("Not a Template: " + t + "/" + t.getClass)
+  }
+  def deriveClassDef(cdef: Tree)(applyToImpl: Template => Template): ClassDef = cdef match {
+    case ClassDef(mods0, name0, tparams0, impl0) =>
+      treeCopy.ClassDef(cdef, mods0, name0, tparams0, applyToImpl(impl0))
+    case t =>
+      sys.error("Not a ClassDef: " + t + "/" + t.getClass)
+  }
+  def deriveModuleDef(mdef: Tree)(applyToImpl: Template => Template): ModuleDef = mdef match {
+    case ModuleDef(mods0, name0, impl0) =>
+      treeCopy.ModuleDef(mdef, mods0, name0, applyToImpl(impl0))
+    case t =>
+      sys.error("Not a ModuleDef: " + t + "/" + t.getClass)
+  }
+  def deriveCaseDef(cdef: Tree)(applyToBody: Tree => Tree): CaseDef = cdef match {
+    case CaseDef(pat0, guard0, body0) =>
+      treeCopy.CaseDef(cdef, pat0, guard0, applyToBody(body0))
+    case t =>
+      sys.error("Not a CaseDef: " + t + "/" + t.getClass)
+  }
+  def deriveLabelDef(ldef: Tree)(applyToRhs: Tree => Tree): LabelDef = ldef match {
+    case LabelDef(name0, params0, rhs0) =>
+      treeCopy.LabelDef(ldef, name0, params0, applyToRhs(rhs0))
+    case t =>
+      sys.error("Not a LabelDef: " + t + "/" + t.getClass)
+  }
 
   class Traverser {
     protected var currentOwner: Symbol = definitions.RootClass
@@ -691,6 +824,8 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
           traverseTrees(vparams); traverse(body)
         }
       case Assign(lhs, rhs) =>
+        traverse(lhs); traverse(rhs)
+      case AssignOrNamedArg(lhs, rhs) =>
         traverse(lhs); traverse(rhs)
       case If(cond, thenp, elsep) =>
         traverse(cond); traverse(thenp); traverse(elsep)
@@ -790,6 +925,7 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
     def ArrayValue(tree: Tree, elemtpt: Tree, trees: List[Tree]): ArrayValue
     def Function(tree: Tree, vparams: List[ValDef], body: Tree): Function
     def Assign(tree: Tree, lhs: Tree, rhs: Tree): Assign
+    def AssignOrNamedArg(tree: Tree, lhs: Tree, rhs: Tree): AssignOrNamedArg
     def If(tree: Tree, cond: Tree, thenp: Tree, elsep: Tree): If
     def Match(tree: Tree, selector: Tree, cases: List[CaseDef]): Match
     def Return(tree: Tree, expr: Tree): Return
@@ -852,6 +988,8 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
       new Function(vparams, body).copyAttrs(tree)
     def Assign(tree: Tree, lhs: Tree, rhs: Tree) =
       new Assign(lhs, rhs).copyAttrs(tree)
+    def AssignOrNamedArg(tree: Tree, lhs: Tree, rhs: Tree) =
+      new AssignOrNamedArg(lhs, rhs).copyAttrs(tree)
     def If(tree: Tree, cond: Tree, thenp: Tree, elsep: Tree) =
       new If(cond, thenp, elsep).copyAttrs(tree)
     def Match(tree: Tree, selector: Tree, cases: List[CaseDef]) =
@@ -997,6 +1135,11 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
       if (lhs0 == lhs) && (rhs0 == rhs) => t
       case _ => treeCopy.Assign(tree, lhs, rhs)
     }
+    def AssignOrNamedArg(tree: Tree, lhs: Tree, rhs: Tree) = tree match {
+      case t @ AssignOrNamedArg(lhs0, rhs0)
+      if (lhs0 == lhs) && (rhs0 == rhs) => t
+      case _ => treeCopy.AssignOrNamedArg(tree, lhs, rhs)
+    }
     def If(tree: Tree, cond: Tree, thenp: Tree, elsep: Tree) = tree match {
       case t @ If(cond0, thenp0, elsep0)
       if (cond0 == cond) && (thenp0 == thenp) && (elsep0 == elsep) => t
@@ -1116,9 +1259,9 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
   abstract class Transformer {
     val treeCopy: TreeCopier = newLazyTreeCopier
     protected var currentOwner: Symbol = definitions.RootClass
-    protected def currentMethod = currentOwner.enclMethod
-    protected def currentClass = currentOwner.enclClass
-    protected def currentPackage = currentOwner.toplevelClass.owner
+    protected def currentMethod = currentOwner.enclosingMethod
+    protected def currentClass = currentOwner.enclosingClass
+    protected def currentPackage = currentOwner.enclosingTopLevelClass.owner
     def transform(tree: Tree): Tree = tree match {
       case EmptyTree =>
         tree
@@ -1181,6 +1324,8 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
         }
       case Assign(lhs, rhs) =>
         treeCopy.Assign(tree, transform(lhs), transform(rhs))
+      case AssignOrNamedArg(lhs, rhs) =>
+        treeCopy.AssignOrNamedArg(tree, transform(lhs), transform(rhs))
       case If(cond, thenp, elsep) =>
         treeCopy.If(tree, transform(cond), transform(thenp), transform(elsep))
       case Match(selector, cases) =>
@@ -1348,6 +1493,8 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
     // vparams => body  where vparams:List[ValDef]
   case Assign(lhs, rhs) =>
     // lhs = rhs
+  case AssignOrNamedArg(lhs, rhs) =>                              (eliminated by typer, resurrected by reifier)
+    // @annotation(lhs = rhs)
   case If(cond, thenp, elsep) =>
     // if (cond) thenp else elsep
   case Match(selector, cases) =>

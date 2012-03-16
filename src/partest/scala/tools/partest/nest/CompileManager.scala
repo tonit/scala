@@ -12,6 +12,7 @@ import scala.tools.nsc.{ Global, Settings, CompilerCommand, FatalError, io }
 import scala.tools.nsc.interactive.RangePositions
 import scala.tools.nsc.reporters.{ Reporter, ConsoleReporter }
 import scala.tools.nsc.util.{ ClassPath, FakePos }
+import scala.tools.nsc.Properties.{ setProp, propOrEmpty }
 import scala.tools.util.PathResolver
 import io.Path
 import java.io.{ File, BufferedReader, PrintWriter, FileReader, Writer, FileWriter, StringWriter }
@@ -26,7 +27,7 @@ class TestSettings(cp: String, error: String => Unit) extends Settings(error) {
 
   deprecation.value = true
   nowarnings.value  = false
-  encoding.value    = "ISO-8859-1"
+  encoding.value    = "UTF-8"
   classpath.value   = cp
 }
 
@@ -75,7 +76,8 @@ class DirectCompiler(val fileManager: FileManager) extends SimpleCompiler {
     val logWriter = new FileWriter(log)
 
     // check whether there is a ".flags" file
-    val flagsFileName = "%s.flags" format (basename(log.getName) dropRight 4) // 4 is "-run" or similar
+    val logFile = basename(log.getName)
+    val flagsFileName = "%s.flags" format (logFile.substring(0, logFile.lastIndexOf("-")))
     val argString = (io.File(log).parent / flagsFileName) ifFile (x => updatePluginPath(x.slurp())) getOrElse ""
     val allOpts = fileManager.SCALAC_OPTS.toList ::: argString.split(' ').toList.filter(_.length > 0)
     val args = allOpts.toList
@@ -110,6 +112,8 @@ class DirectCompiler(val fileManager: FileManager) extends SimpleCompiler {
 
     try {
       NestUI.verbose("compiling "+toCompile)
+      NestUI.verbose("with classpath: "+global.classPath.toString)
+      NestUI.verbose("and java classpath: "+ propOrEmpty("java.class.path"))
       try new global.Run compile toCompile
       catch {
         case FatalError(msg) =>

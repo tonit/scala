@@ -8,10 +8,15 @@
 
 package scala.collection.parallel.mutable
 
+
+
 import collection.generic._
 import collection.mutable.FlatHashTable
 import collection.parallel.Combiner
 import collection.mutable.UnrolledBuffer
+import collection.parallel.Task
+
+
 
 /** A parallel hash set.
  *
@@ -66,14 +71,11 @@ extends ParSet[T]
 
   def contains(elem: T) = containsEntry(elem)
 
-  def splitter = new ParHashSetIterator(0, table.length, size) with SCPI
-
-  type SCPI = SignalContextPassingIterator[ParHashSetIterator]
+  def splitter = new ParHashSetIterator(0, table.length, size)
 
   class ParHashSetIterator(start: Int, iteratesUntil: Int, totalElements: Int)
-  extends ParFlatHashTableIterator(start, iteratesUntil, totalElements) with ParIterator {
-  me: SCPI =>
-    def newIterator(start: Int, until: Int, total: Int) = new ParHashSetIterator(start, until, total) with SCPI
+  extends ParFlatHashTableIterator(start, iteratesUntil, totalElements) {
+    def newIterator(start: Int, until: Int, total: Int) = new ParHashSetIterator(start, until, total)
   }
 
   private def writeObject(s: java.io.ObjectOutputStream) {
@@ -116,13 +118,13 @@ private[mutable] abstract class ParHashSetCombiner[T](private val tableLoadFacto
 extends collection.parallel.BucketCombiner[T, ParHashSet[T], Any, ParHashSetCombiner[T]](ParHashSetCombiner.numblocks)
 with collection.mutable.FlatHashTable.HashUtils[T] {
 //self: EnvironmentPassingCombiner[T, ParHashSet[T]] =>
-  import collection.parallel.tasksupport._
   private var mask = ParHashSetCombiner.discriminantmask
   private var nonmasklen = ParHashSetCombiner.nonmasklength
+  private var seedvalue = 27
 
   def +=(elem: T) = {
     sz += 1
-    val hc = improve(elemHashCode(elem))
+    val hc = improve(elemHashCode(elem), seedvalue)
     val pos = hc >>> nonmasklen
     if (buckets(pos) eq null) {
       // initialize bucket
@@ -140,8 +142,8 @@ with collection.mutable.FlatHashTable.HashUtils[T] {
 
   private def parPopulate: FlatHashTable.Contents[T] = {
     // construct it in parallel
-    val table = new AddingFlatHashTable(size, tableLoadFactor)
-    val (inserted, leftovers) = executeAndWaitResult(new FillBlocks(buckets, table, 0, buckets.length))
+    val table = new AddingFlatHashTable(size, tableLoadFactor, seedvalue)
+    val (inserted, leftovers) = combinerTaskSupport.executeAndWaitResult(new FillBlocks(buckets, table, 0, buckets.length))
     var leftinserts = 0
     for (elem <- leftovers) leftinserts += table.insertEntry(0, table.tableLength, elem.asInstanceOf[T])
     table.setSize(leftinserts + inserted)
@@ -153,6 +155,7 @@ with collection.mutable.FlatHashTable.HashUtils[T] {
     // TODO parallelize by keeping separate size maps and merging them
     val tbl = new FlatHashTable[T] {
       sizeMapInit(table.length)
+      seedvalue = ParHashSetCombiner.this.seedvalue
     }
     for {
       buffer <- buckets;
@@ -168,13 +171,13 @@ with collection.mutable.FlatHashTable.HashUtils[T] {
    *  it has to take and allocates the underlying hash table in advance.
    *  Elements can only be added to it. The final size has to be adjusted manually.
    *  It is internal to `ParHashSet` combiners.
-   *
    */
-  class AddingFlatHashTable(numelems: Int, lf: Int) extends FlatHashTable[T] {
+  class AddingFlatHashTable(numelems: Int, lf: Int, inseedvalue: Int) extends FlatHashTable[T] {
     _loadFactor = lf
     table = new Array[AnyRef](capacity(FlatHashTable.sizeForThreshold(numelems, _loadFactor)))
     tableSize = 0
     threshold = FlatHashTable.newThreshold(_loadFactor, table.length)
+    seedvalue = inseedvalue
     sizeMapInit(table.length)
 
     override def toString = "AFHT(%s)".format(table.length)
@@ -305,10 +308,11 @@ with collection.mutable.FlatHashTable.HashUtils[T] {
       // the total number of successfully inserted elements is adjusted accordingly
       result = (this.result._1 + that.result._1 + inserted, remainingLeftovers concat that.result._2)
     }
-    def shouldSplitFurther = howmany > collection.parallel.thresholdFromSize(ParHashMapCombiner.numblocks, parallelismLevel)
+    def shouldSplitFurther = howmany > collection.parallel.thresholdFromSize(ParHashMapCombiner.numblocks, combinerTaskSupport.parallelismLevel)
   }
 
 }
+
 
 private[parallel] object ParHashSetCombiner {
   private[mutable] val discriminantbits = 5

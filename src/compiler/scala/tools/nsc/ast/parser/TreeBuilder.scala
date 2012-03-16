@@ -29,12 +29,13 @@ abstract class TreeBuilder {
   def rootId(name: Name)       = gen.rootId(name)
   def rootScalaDot(name: Name) = gen.rootScalaDot(name)
   def scalaDot(name: Name)     = gen.scalaDot(name)
-  def scalaAnyRefConstr        = gen.scalaAnyRefConstr
-  def scalaUnitConstr          = gen.scalaUnitConstr
-  def scalaScalaObjectConstr   = gen.scalaScalaObjectConstr
-  def productConstr            = gen.productConstr
+  def scalaAnyRefConstr        = scalaDot(tpnme.AnyRef)
+  def scalaAnyValConstr        = scalaDot(tpnme.AnyVal)
+  def scalaAnyConstr           = scalaDot(tpnme.Any)
+  def scalaUnitConstr          = scalaDot(tpnme.Unit)
+  def productConstr            = scalaDot(tpnme.Product)
   def productConstrN(n: Int)   = scalaDot(newTypeName("Product" + n))
-  def serializableConstr       = gen.serializableConstr
+  def serializableConstr       = scalaDot(tpnme.Serializable)
 
   def convertToTypeName(t: Tree) = gen.convertToTypeName(t)
 
@@ -173,7 +174,14 @@ abstract class TreeBuilder {
   }
 
   /** Create tree representing (unencoded) binary operation expression or pattern. */
-  def makeBinop(isExpr: Boolean, left: Tree, op: TermName, right: Tree, opPos: Position): Tree = {
+  def makeBinop(isExpr: Boolean, left: Tree, op: TermName, right: Tree, opPos: Position, targs: List[Tree] = Nil): Tree = {
+    require(isExpr || targs.isEmpty, ((left, op, targs, right)))
+
+    def mkSel(t: Tree) = {
+      val sel = atPos(opPos union t.pos)(Select(stripParens(t), op.encode))
+      if (targs.isEmpty) sel else atPos(left.pos)(TypeApply(sel, targs))
+    }
+
     def mkNamed(args: List[Tree]) =
       if (isExpr) args map {
         case a @ Assign(id @ Ident(name), rhs) =>
@@ -186,14 +194,17 @@ abstract class TreeBuilder {
     }
     if (isExpr) {
       if (treeInfo.isLeftAssoc(op)) {
-        Apply(atPos(opPos union left.pos) { Select(stripParens(left), op.encode) }, arguments)
-      } else {
+        Apply(mkSel(left), arguments)
+      }
+      else {
         val x = freshTermName()
         Block(
           List(ValDef(Modifiers(SYNTHETIC), x, TypeTree(), stripParens(left))),
-          Apply(atPos(opPos union right.pos) { Select(stripParens(right), op.encode) }, List(Ident(x))))
+          Apply(mkSel(right), List(Ident(x)))
+        )
       }
-    } else {
+    }
+    else {
       Apply(Ident(op.encode), stripParens(left) :: arguments)
     }
   }
@@ -470,15 +481,11 @@ abstract class TreeBuilder {
   def makeVisitor(cases: List[CaseDef], checkExhaustive: Boolean): Tree =
     makeVisitor(cases, checkExhaustive, "x$")
 
-  private def makeUnchecked(expr: Tree): Tree = atPos(expr.pos) {
-    Annotated(New(scalaDot(definitions.UncheckedClass.name), List(Nil)), expr)
-  }
-
   /** Create visitor <x => x match cases> */
   def makeVisitor(cases: List[CaseDef], checkExhaustive: Boolean, prefix: String): Tree = {
-    val x = freshTermName(prefix)
-    val id = Ident(x)
-    val sel = if (checkExhaustive) id else makeUnchecked(id)
+    val x   = freshTermName(prefix)
+    val id  = Ident(x)
+    val sel = if (checkExhaustive) id else gen.mkUnchecked(id)
     Function(List(makeSyntheticParam(x)), Match(sel, cases))
   }
 
@@ -563,7 +570,7 @@ abstract class TreeBuilder {
       val vars = getVariables(pat1)
       val matchExpr = atPos((pat1.pos union rhs.pos).makeTransparent) {
         Match(
-          makeUnchecked(rhs),
+          gen.mkUnchecked(rhs),
           List(
             atPos(pat1.pos) {
               CaseDef(pat1, EmptyTree, makeTupleTerm(vars map (_._1) map Ident, true))

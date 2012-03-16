@@ -21,6 +21,9 @@ object XMLUtil {
 }
 
 object Test extends Properties("HtmlFactory") {
+	
+	final val RESOURCES = "test/scaladoc/resources/"
+	
   import scala.tools.nsc.doc.{DocFactory, Settings}
   import scala.tools.nsc.doc.model.IndexModelFactory
   import scala.tools.nsc.doc.html.HtmlFactory
@@ -47,7 +50,7 @@ object Test extends Properties("HtmlFactory") {
   def createTemplates(basename: String) = {
     val result = scala.collection.mutable.Map[String, scala.xml.NodeSeq]()
 
-    createFactory.makeUniverse(List("test/scaladoc/resources/"+basename)) match {
+    createFactory.makeUniverse(List(RESOURCES+basename)) match {
       case Some(universe) => {
         val index = IndexModelFactory.makeIndex(universe)
         (new HtmlFactory(universe, index)).writeTemplates((page) => {
@@ -61,7 +64,7 @@ object Test extends Properties("HtmlFactory") {
   }
 
   def createReferenceIndex(basename: String) = {
-    createFactory.makeUniverse(List("test/scaladoc/resources/"+basename)) match {
+    createFactory.makeUniverse(List(RESOURCES+basename)) match {
       case Some(universe) => {
         val index = IndexModelFactory.makeIndex(universe)
         val pages = index.firstLetterIndex.map({
@@ -81,6 +84,58 @@ object Test extends Properties("HtmlFactory") {
     val html = scala.stripSuffix(".scala") + ".html"
     createTemplates(scala)(html)
   }
+
+  /**
+   * This tests the text without the markup - ex:
+   * 
+   * <h4 class="signature">
+   *  <span class="modifier_kind">
+   *    <span class="modifier">implicit</span>
+   *    <span class="kind">def</span>
+   *  </span>
+   *  <span class="symbol">
+   *    <span class="name">test</span><span class="params">()</span><span class="result">: <span name="scala.Int" class="extype">Int</span></span>
+   *  </span>
+   *  </h4>
+   * 
+   * becomes:
+   * 
+   *  implicit def test(): Int
+   *  
+   * and is required to contain the text in the given checks
+   * 
+   * NOTE: Comparison is done ignoring all whitespace
+   */
+  def checkText(scalaFile: String, debug: Boolean = true)(checks: (Option[String], String, Boolean)*): Boolean = {
+    val htmlFile = scalaFile.stripSuffix(".scala") + ".html"    
+    val htmlAllFiles = createTemplates(scalaFile)
+    var result = true
+    
+    for ((fileHint, check, expected) <- checks) {
+      // resolve the file to be checked
+      val fileName = fileHint match {
+        case Some(file) => 
+          if (file endsWith ".html")
+            file
+          else
+            file + ".html"
+        case None =>
+          htmlFile
+      }
+      val fileText = htmlAllFiles(fileName).text.replace('→',' ').replaceAll("\\s+","")
+      val checkText = check.replace('→',' ').replaceAll("\\s+","")
+      val checkValue = fileText.contains(checkText) == expected
+      if (debug && (!checkValue)) {
+        Console.err.println("Check failed: ")
+        Console.err.println("HTML: " + fileText)
+        Console.err.println("Check: " + checkText)
+      }
+      result &&= checkValue 
+    }
+    
+    result
+  }
+  
 
   def shortComments(root: scala.xml.Node) =
     XMLUtil.stripGroup(root).descendant.flatMap {
@@ -141,9 +196,9 @@ object Test extends Properties("HtmlFactory") {
     createTemplate("Trac4372.scala") match {
       case node: scala.xml.Node => {
         val html = node.toString
-        html.contains("<span class=\"name\" title=\"gt4s: $plus$colon\">+:</span>") &&
-          html.contains("<span class=\"name\" title=\"gt4s: $minus$colon\">-:</span>") &&
-            html.contains("""<span class="params">(<span name="n">n: <span name="scala.Int" class="extype">Int</span></span>)</span><span class="result">: <span name="scala.Int" class="extype">Int</span></span>""")
+        html.contains("<span title=\"gt4s: $plus$colon\" class=\"name\">+:</span>") &&
+          html.contains("<span title=\"gt4s: $minus$colon\" class=\"name\">-:</span>") &&
+            html.contains("""<span class="params">(<span name="n">n: <span class="extype" name="scala.Int">Int</span></span>)</span><span class="result">: <span class="extype" name="scala.Int">Int</span></span>""")
       }
       case _ => false
     }
@@ -241,27 +296,27 @@ object Test extends Properties("HtmlFactory") {
       case _ => false
     }
   }
-
-  property("Trac #484 - refinements and existentials") = {
-    val files = createTemplates("Trac484.scala")
-    val lines = """
-        |type Bar = AnyRef { type Dingus <: T forSome { type T <: String } }
-        |type Foo = AnyRef { ... /* 3 definitions in type refinement */ }
-        |def g(x: T forSome { type T <: String }): String
-        |def h(x: Float): AnyRef { def quux(x: Int,y: Int): Int }
-        |def hh(x: Float): AnyRef { def quux(x: Int,y: Int): Int }
-        |def j(x: Int): Bar
-        |def k(): AnyRef { type Dingus <: T forSome { type T <: String } }
-      """.stripMargin.trim.lines map (_.trim)
-
-    files("RefinementAndExistentials.html") match {
-      case node: scala.xml.Node => {
-        val s = node.text.replaceAll("\\s+", " ")
-        lines forall (s contains _)
-      }
-      case _ => false
-    }
-  }
+  // 
+  // property("Trac #484 - refinements and existentials") = {
+  //   val files = createTemplates("Trac484.scala")
+  //   val lines = """
+  //       |type Bar = AnyRef { type Dingus <: T forSome { type T <: String } }
+  //       |type Foo = AnyRef { ... /* 3 definitions in type refinement */ }
+  //       |def g(x: T forSome { type T <: String }): String
+  //       |def h(x: Float): AnyRef { def quux(x: Int,y: Int): Int }
+  //       |def hh(x: Float): AnyRef { def quux(x: Int,y: Int): Int }
+  //       |def j(x: Int): Bar
+  //       |def k(): AnyRef { type Dingus <: T forSome { type T <: String } }
+  //     """.stripMargin.trim.lines map (_.trim)
+  // 
+  //   files("RefinementAndExistentials.html") match {
+  //     case node: scala.xml.Node => {
+  //       val s = node.text.replaceAll("\\s+", " ")
+  //       lines forall (s contains _)
+  //     }
+  //     case _ => false
+  //   }
+  // }
 
   property("Trac #4289") = {
     val files = createTemplates("Trac4289.scala")
@@ -377,113 +432,158 @@ object Test extends Properties("HtmlFactory") {
     createTemplate("SI_4898.scala")
     true
   }
-
-  // A piece of the signature - corresponding to the use case
-  def signature(no: Int, modifier: String) = ("""
-    <li visbl="pub" name="SI_5054_q""" + no + """#test" data-isabs="false">
-      <a id="test():Int"></a>
-      <h4 class="signature">
-      <span class="modifier_kind">
-        <span class="modifier">""" + modifier + """</span>
-        <span class="kind">def</span>
-      </span>
-      <span class="symbol">
-        <span class="name">test</span><span class="params">()</span><span class="result">: <span name="scala.Int" class="extype">Int</span></span>
-      </span>
-      </h4>
-      <p class="shortcomment cmt">[use case]
-      </p>
-    </li>""").replaceAll("\\s+", "")
-  
-  property("Use cases should override their original members") = {
-    createTemplate("SI_5054_q1.scala") match {
-      case node: scala.xml.Node =>
-        node.toString.replaceAll("\\s+","").contains(signature(1, ""))
-      case _ => false
-    }
-  }
-
-  property("Use cases should keep their flags - final should not be lost") = {
-    createTemplate("SI_5054_q2.scala") match {
-      case node: scala.xml.Node =>
-        node.toString.replaceAll("\\s+","").contains(signature(2, "final"))
-      case _ => false
-    }
-  }
-  
-  property("Use cases should keep their flags - implicit should not be lost") = {
-    createTemplate("SI_5054_q3.scala") match {
-      case node: scala.xml.Node =>
-        node.toString.replaceAll("\\s+","").contains(signature(3, "implicit"))
-      case _ => false
-    }
-  }
-
-  property("Use cases should keep their flags - real abstract should not be lost") = {
-    createTemplate("SI_5054_q4.scala") match {
-      case node: scala.xml.Node =>
-        node.toString.replaceAll("\\s+","").contains(signature(4, "abstract"))
-      case _ => false
-    }
-  }
-
-  property("Use cases should keep their flags - traits should not be affected") = {
-    createTemplate("SI_5054_q5.scala") match {
-      case node: scala.xml.Node =>
-        node.toString.replaceAll("\\s+","").contains(signature(5, ""))
-      case _ => false
-    }
-  }
-
-  property("Use cases should keep their flags - traits should not be affected") = {
-    createTemplate("SI_5054_q6.scala") match {
-      case node: scala.xml.Node =>
-        node.toString.replaceAll("\\s+","").contains(signature(6, "abstract"))
-      case _ => false
-    }
-  }
-  
-  val useCaseExplanation = """
-   </li><li visbl="pub" name="SI_5054_q7#test" data-isabs="false">
-      <a id="test():Int"></a>
-      <h4 class="signature">
-      <span class="modifier_kind">
-        <span class="modifier">abstract </span>
-        <span class="kind">def</span>
-      </span>
-      <span class="symbol">
-        <span class="name">test</span><span class="params">()</span><span class="result">: <span name="scala.Int" class="extype">Int</span></span>
-      </span>
-      </h4>
-      <p class="shortcomment cmt">[use case] This takes the implicit value in scope.</p><div class="fullcomment">[use case] <div class="comment cmt"><p>This takes the implicit value in scope.</p><p>Example: <code>test()</code></p></div><dl class="paramcmts block"><dt>returns</dt><dd class="cmt"><p>some integer
-   </p></dd></dl></div>
-    </li><li visbl="pub" name="SI_5054_q7#test" data-isabs="false">
-      <a id="test(Int):Int"></a>
-      <h4 class="signature">
-      <span class="modifier_kind">
-        <span class="modifier">abstract </span>
-        <span class="kind">def</span>
-      </span>
-      <span class="symbol">
-        <span class="name">test</span><span class="params">(<span name="explicit">explicit: <span name="scala.Int" class="extype">Int</span></span>)</span><span class="result">: <span name="scala.Int" class="extype">Int</span></span>
-      </span>
-      </h4>
-      <p class="shortcomment cmt">[use case] This takes the explicit value passed.</p><div class="fullcomment">[use case] <div class="comment cmt"><p>This takes the explicit value passed.</p><p>Example: <code>test(3)</code></p></div><dl class="paramcmts block"><dt>returns</dt><dd class="cmt"><p>some integer
-   </p></dd></dl></div>
-    </li>
-  """.replaceAll("\\s+","")
  
-  property("Use case individual signature test") = {
-    createTemplate("SI_5054_q7.scala") match {
-      case node: scala.xml.Node =>
-        node.toString.replaceAll("\\s+","").contains(useCaseExplanation)
-      case _ => false
-    }
-  }
+  property("Use cases should override their original members") =
+     checkText("SI_5054_q1.scala")(
+       (None,"""def test(): Int""", true),
+       (None,"""def test(implicit lost: Int): Int""", false)
+     )
+
+  property("Use cases should keep their flags - final should not be lost") = 
+    checkText("SI_5054_q2.scala")((None, """final def test(): Int""", true))
   
+  property("Use cases should keep their flags - implicit should not be lost") = 
+    checkText("SI_5054_q3.scala")((None, """implicit def test(): Int""", true))
+ 
+  property("Use cases should keep their flags - real abstract should not be lost") = 
+    checkText("SI_5054_q4.scala")((None, """abstract def test(): Int""", true))
+
+  property("Use cases should keep their flags - traits should not be affected") = 
+    checkText("SI_5054_q5.scala")((None, """def test(): Int""", true))
+
+  property("Use cases should keep their flags - traits should not be affected") = 
+    checkText("SI_5054_q6.scala")((None, """abstract def test(): Int""", true))
+   
+  property("Use case individual signature test") = 
+    checkText("SI_5054_q7.scala")(
+      (None, """abstract def test2(explicit: Int): Int [use case] This takes the explicit value passed.""", true),
+      (None, """abstract def test1(): Int [use case] This takes the implicit value in scope.""", true)
+    )
+
+  property("Display correct \"Definition classes\"") = 
+    checkText("SI_5287.scala")( 
+      (None,
+          """def method(): Int
+           [use case] The usecase explanation
+           [use case] The usecase explanation
+           Definition Classes SI_5287 SI_5287_B SI_5287_A""", true)
+    )      // the explanation appears twice, as small comment and full comment           
+  
+    
+  property("Correct comment inheritance for overriding") = 
+    checkText("implicit-inheritance-override.scala")(
+      (Some("Base"), 
+       """def function[T](arg1: T, arg2: String): Double
+          The base comment.
+          The base comment. And another sentence...
+          T the type of the first argument
+          arg1 The T term comment
+          arg2 The string comment
+          returns The return comment
+          """, true),
+      (Some("DerivedA"), 
+       """def function[T](arg1: T, arg2: String): Double
+          Overriding the comment, the params and returns comments should stay the same.
+          Overriding the comment, the params and returns comments should stay the same.
+          T the type of the first argument
+          arg1 The T term comment
+          arg2 The string comment
+          returns The return comment
+          """, true),
+      (Some("DerivedB"), 
+       """def function[T](arg1: T, arg2: String): Double
+          T the type of the first argument
+          arg1 The overridden T term comment
+          arg2 The overridden string comment
+          returns The return comment
+          """, true),
+      (Some("DerivedC"), 
+       """def function[T](arg1: T, arg2: String): Double
+          T the type of the first argument
+          arg1 The T term comment
+          arg2 The string comment
+          returns The overridden return comment
+          """, true),
+      (Some("DerivedD"), 
+       """def function[T](arg1: T, arg2: String): Double
+          T The overriden type parameter comment
+          arg1 The T term comment
+          arg2 The string comment
+          returns The return comment
+          """, true)
+    )
+    
+  for (useCaseFile <- List("UseCaseInheritance", "UseCaseOverrideInheritance")) {
+    property("Correct comment inheritance for usecases") = 
+      checkText("implicit-inheritance-usecase.scala")(
+        (Some(useCaseFile), 
+         """def missing_arg[T](arg1: T): Double
+            [use case]
+            [use case]
+            T The type parameter
+            arg1 The T term comment
+            returns The return comment
+            """, true),
+        (Some(useCaseFile), 
+         """def missing_targ(arg1: Int, arg2: String): Double
+            [use case]
+            [use case]
+            arg1 The T term comment
+            arg2 The string comment
+            returns The return comment
+            """, true),
+        (Some(useCaseFile), 
+         """def overridden_arg1[T](implicit arg1: T, arg2: String): Double
+            [use case]
+            [use case]
+            T The type parameter
+            arg1 The overridden T term comment
+            arg2 The string comment
+            returns The return comment
+            """, true),
+        (Some(useCaseFile), 
+         """def overridden_targ[T](implicit arg1: T, arg2: String): Double
+            [use case]
+            [use case]
+            T The overridden type parameter comment
+            arg1 The T term comment
+            arg2 The string comment
+            returns The return comment
+            """, true),
+        (Some(useCaseFile), 
+         """def overridden_return[T](implicit arg1: T, arg2: String): Double
+            [use case]
+            [use case]
+            T The type parameter
+            arg1 The T term comment
+            arg2 The string comment
+            returns The overridden return comment
+            """, true),
+        (Some(useCaseFile), 
+         """def added_arg[T](implicit arg1: T, arg2: String, arg3: Float): Double
+            [use case]
+            [use case]
+            T The type parameter
+            arg1 The T term comment
+            arg2 The string comment
+            arg3 The added float comment
+            returns The return comment
+            """, true),
+        (Some(useCaseFile), 
+         """def overridden_comment[T](implicit arg1: T, arg2: String): Double
+            [use case] The overridden comment.
+            [use case] The overridden comment.
+            T The type parameter
+            arg1 The T term comment
+            arg2 The string comment
+            returns The return comment
+            """, true)
+      )    
+  }
+    
   {
     val files = createTemplates("basic.scala")
-    println(files)
+    //println(files)
 
     property("class") = files.get("com/example/p1/Clazz.html") match {
       case Some(node: scala.xml.Node) => {

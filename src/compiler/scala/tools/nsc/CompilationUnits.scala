@@ -75,6 +75,9 @@ trait CompilationUnits { self: Global =>
      */
     val icode: LinkedHashSet[icodes.IClass] = new LinkedHashSet
 
+    def echo(pos: Position, msg: String) =
+      reporter.echo(pos, msg)
+
     def error(pos: Position, msg: String) =
       reporter.error(pos, msg)
 
