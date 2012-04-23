@@ -1,0 +1,15 @@
+#!/bin/bash
+# Usage: gh-merge-pullreqs <id>...
+
+declare -a fetchargs 
+declare -a mergeargs
+#declare -r origin=scala
+
+for prid in "$@"; do
+ echo "Adding pull $prid to merge..."
+ fetchargs=( ${fetchargs[@]} "pull/$prid/head:pullreq/$prid" )
+ mergeargs=( ${mergeargs[@]} "pullreq/$prid" )
+done
+
+git fetch "scala" "${fetchargs[@]}"
+git merge --no-ff --no-commit "${mergeargs[@]}"
