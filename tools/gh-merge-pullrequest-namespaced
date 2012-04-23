@@ -1,0 +1,11 @@
+#!/bin/bash
+# Usage: gh-merge-pullrequest-namespaced <id>
+
+if test "$1" == ""; then
+  echo "usage: gh-merge-pullrequest-namespaced <id>"
+  exit 1
+fi
+
+# TODO - verify we're on master and synched or some such.  Either that or we let jenkins take care of that...
+git checkout -b "verify-pullrequest-$1"
+./tools/gh-merge-pullrequest "$1"
