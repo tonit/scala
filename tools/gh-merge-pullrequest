@@ -11,5 +11,5 @@ for prid in "$@"; do
  mergeargs=( ${mergeargs[@]} "pullreq/$prid" )
 done
 
-git fetch "scala" "${fetchargs[@]}"
+git fetch "origin" "${fetchargs[@]}"
 git merge --no-ff --no-commit "${mergeargs[@]}"
