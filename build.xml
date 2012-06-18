@@ -1688,39 +1688,41 @@ OSGi Artifacts
 
   <target name="osgi.init" depends="pack.done">
     <mkdir dir="${build-osgi.dir}"/>
+
+    <!-- simplify fixing pom versions -->
+    <macrodef name="make-bundle">
+      <attribute name="name" />
+      <attribute name="version" />
+      <sequential>
+        <copy file="${src.dir}/build/bnd/@{name}.bnd" tofile="${build-osgi.dir}/@{name}.bnd" overwrite="true">
+          <filterset>
+            <filter token="VERSION" value="@{version}" />
+          </filterset>
+        </copy>
+        <bnd classpath="${build-pack.dir}/lib/@{name}.jar"
+             eclipse="false"
+             failok="false"
+             exceptions="true"
+             files="${build-osgi.dir}/@{name}.bnd"
+             output="${build-osgi.dir}"/>
+      </sequential>
+    </macrodef>
   </target>
 
-  <target name="osgi.lib" depends="osgi.init">
-        <bnd classpath="${build-pack.dir}/lib/scala-library.jar"
-             eclipse="false"
-             failok="false"
-             exceptions="true"
-             files="${src.dir}/build/bnd/scala-library.bnd"
-             output="${build-osgi.dir}"/>
-        <bnd classpath="${build-pack.dir}/lib/scala-actors.jar"
-             eclipse="false"
-             failok="false"
-             exceptions="true"
-             files="${src.dir}/build/bnd/scala-actors.bnd"
-             output="${build-osgi.dir}"/>
-        <bnd classpath="${build-pack.dir}/lib/scala-swing.jar"
-             eclipse="false"
-             failok="false"
-             exceptions="true"
-             files="${src.dir}/build/bnd/scala-swing.bnd"
-             output="${build-osgi.dir}"/>
+  <target name="osgi.bundles" depends="osgi.init">
+    <make-bundle name="scala-library" version="${osgi.version.number}" />
+    <make-bundle name="scala-actors" version="${osgi.version.number}" />
+    <make-bundle name="scala-actors-migration" version="${osgi.version.number}" />
+    <make-bundle name="scala-reflect" version="${osgi.version.number}" />
+    <make-bundle name="scala-compiler" version="${osgi.version.number}" />
   </target>
 
-  <target name="osgi.comp" depends="osgi.init">
-        <bnd classpath="${build-pack.dir}/lib/scala-compiler.jar"
-             eclipse="false"
-             failok="false"
-             exceptions="true"
-             files="${src.dir}/build/bnd/scala-compiler.bnd"
-             output="${build-osgi.dir}"/>
+  <target name="osgi.bundles.swing" depends="osgi.init" if="has.java6">
+    <!-- TODO - only if JDK6 -->
+    <make-bundle name="scala-swing" version="${osgi.version.number}"/>
   </target>
 
-  <target name="osgi.done" depends="osgi.lib, osgi.comp"/>
+  <target name="osgi.done" depends="osgi.bundles, osgi.bundles.swing"/>
 
   <target name="osgi.clean">
     <delete dir="${build-osgi.dir}" includeemptydirs="yes" quiet="yes" failonerror="no"/>
