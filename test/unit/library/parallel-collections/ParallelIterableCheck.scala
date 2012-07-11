@@ -10,11 +10,11 @@ import org.scalacheck.Properties
 
 import scala.collection._
 import scala.collection.parallel._
+import tools.testing.ScalacheckTest
 
 
 
-
-abstract class ParallelIterableCheck[T](collName: String) extends Properties(collName) with Operators[T] {
+abstract class ParallelIterableCheck[T](collName: String) extends ScalacheckTest(collName) with Operators[T] {
   type CollType <: ParIterable[T]
   
   def values: Seq[Gen[T]]

@@ -5,9 +5,9 @@
 import org.scalacheck._
 
 import scala.collection.parallel._
+import tools.testing.ScalacheckTest
 
-
-class ParCollProperties extends Properties("Parallel collections") {
+class ParCollProperties extends ScalacheckTest("Parallel collections") {
   /*   Collections   */
   
   // parallel arrays
