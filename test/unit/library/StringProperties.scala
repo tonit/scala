@@ -1,7 +1,8 @@
+import tools.testing.ScalacheckTest
 import org.scalacheck._
 
 
-object Test extends Properties("String") {
+object StringProperties extends ScalacheckTest("String") {
   property("startsWith") = Prop.forAll((a: String, b: String) => (a+b).startsWith(a))
 
   property("endsWith") = Prop.forAll((a: String, b: String) => (a+b).endsWith(b))
