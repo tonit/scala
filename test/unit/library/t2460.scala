@@ -3,8 +3,9 @@ import org.scalacheck.Properties
 import org.scalacheck.ConsoleReporter.testStatsEx
 import org.scalacheck.{Test => SCTest}
 import org.scalacheck.Gen
+import tools.testing.ScalacheckTest
 
-object Test extends Properties("Regex : Ticket 2460") {
+object RegexT2460Properties extends ScalacheckTest("Regex : Ticket 2460") {
 
   val vowel = Gen.oneOf("a", "z")
 

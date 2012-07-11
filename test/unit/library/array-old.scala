@@ -1,3 +1,5 @@
+package oldarray
+
 import org.scalacheck._
 import Prop._
 import Gen._
@@ -5,8 +7,9 @@ import Arbitrary._
 import util._
 import Buildable._
 import scala.collection.mutable.ArraySeq
+import tools.testing.ScalacheckTest
 
-object Test extends Properties("Array") {
+object ArrayProperties extends ScalacheckTest("Array") {
   /** At this moment the authentic scalacheck Array Builder/Arb bits are commented out.
    */
   implicit def arbArray[T](implicit a: Arbitrary[T], m: Manifest[T]): Arbitrary[Array[T]] =

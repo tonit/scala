@@ -5,8 +5,9 @@ import Gen._
 import Arbitrary._
 import util._
 import Buildable._
+import tools.testing.ScalacheckTest
 
-object Test extends Properties("TreeMap") {
+object TreeMapProperties extends Properties("TreeMap") {
   def genTreeMap[A: Arbitrary: Ordering, B: Arbitrary]: Gen[TreeMap[A, B]] =
     for {
       keys <- listOf(arbitrary[A])

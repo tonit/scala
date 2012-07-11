@@ -1455,7 +1455,7 @@ QUICK BUILD (QUICK)
     </path>
   </target>
 
-  <target name="quick.clean" depends="libs.clean">
+  <target name="quick.clean" depends="libs.clean, quick.unit.clean">
     <delete dir="${build-quick.dir}" includeemptydirs="yes" quiet="yes" failonerror="no"/>
   </target>
 
@@ -2798,12 +2798,8 @@ Experimental Unit testing
 
   <target name="quick.unit.pre-lib" depends="quick.scalacheck, quick.unit.start">
     <uptodate property="quick.unit.lib.available" targetfile="${build-quick-unit.dir}/library.complete">
-      <srcfiles dir="${src.dir}">
-        <include name="library/**"/>
-        <include name="continuations/**"/>
-        <include name="swing/**"/>
-        <include name="actors/**"/>
-        <include name="actors-migration/**"/>
+      <srcfiles dir="${src.unit.dir}/library">
+        <include name="**"/>
       </srcfiles>
     </uptodate>
   </target>
@@ -2830,11 +2826,11 @@ Experimental Unit testing
 
   <target name="quick.unit.run-lib" depends="quick.unit.lib">
     <stopwatch name="quick.unit.lib.run.timer"/>
-    <junit haltonfailure="yes" printsummary="yes">
+    <!-- TODO - Figure out a way to run these concurrently.... -->
+    <junit haltonfailure="yes" printsummary="on">
       <batchtest>
         <fileset dir="${build-quick-unit.dir}/classes/library">
            <include name="**/*Properties$.class" />
-           <include name="**/*Test$.class" />
         </fileset>
       </batchtest>
       <classpath>
@@ -2851,6 +2847,10 @@ Experimental Unit testing
 
   <target name="quick.unit.end" depends="quick.unit.run-lib">
     <stopwatch name="quick.unit.timer" action="total"/>
+  </target>
+
+  <target name="quick.unit.clean">
+    <delete dir="${build-quick-unit.dir}" includeemptydirs="yes" quiet="yes" failonerror="no"/>
   </target>
 
   <target name="unit-test" depends="quick.unit.end" />

@@ -3,6 +3,7 @@ import org.scalacheck.Prop.forAll
 import org.scalacheck.Properties
 
 import util.logging.ConsoleLogger
+import tools.testing.ScalacheckTest
 
 package scala.collection.mutable {
 
@@ -108,7 +109,7 @@ package scala.collection.mutable {
   }
 }
 
-object Test extends Properties("AVL") {
+object AvlProperties extends ScalacheckTest("AVL") {
   include(scala.collection.mutable.TestInsert)
   include(scala.collection.mutable.TestRemove)
 }

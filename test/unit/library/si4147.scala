@@ -3,12 +3,12 @@ import org.scalacheck.Properties
 import org.scalacheck.ConsoleReporter.testStatsEx
 import org.scalacheck.Gen
 import org.scalacheck.ConsoleReporter
-
+import tools.testing.ScalacheckTest
 
 import collection.mutable
 
 
-object Test extends Properties("Mutable TreeSet") {
+object MutableTreeSetProperties extends ScalacheckTest("Mutable TreeSet") {
 
   val generator = Gen.listOfN(1000, Gen.chooseNum(0, 1000))
 

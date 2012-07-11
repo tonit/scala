@@ -1,8 +1,9 @@
 import org.scalacheck._
 import Prop._
 import Gen._
+import tools.testing.ScalacheckTest
 
-object Test extends Properties("==") {
+object PrimitiveEqEqProperties extends ScalacheckTest("==") {
   def equalObjectsEqualHashcodes(x: Any, y: Any) = (x != y) || (x == y && x.## == y.##)
   
   // ticket #2087

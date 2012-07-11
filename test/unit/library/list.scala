@@ -1,8 +1,9 @@
 import org.scalacheck._
 import Prop._
 import Gen._
+import tools.testing.ScalacheckTest
 
-object Test extends Properties("List") {
+object ListProperties extends ScalacheckTest("List") {
   def sorted(xs: List[Int]) = xs sortWith (_ < _)
 
   property("concat size") = forAll { (l1: List[Int], l2: List[Int]) => (l1.size + l2.size) == (l1 ::: l2).size }

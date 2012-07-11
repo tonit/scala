@@ -6,11 +6,11 @@
 import collection._
 
 
-
+// TODO - Make this a JUnit test.
 
 // checks whether hash tries split their iterators correctly
 // even after some elements have been traversed
-object Test {
+object HashTrieSplitTest {
   def main(args: Array[String]) {
     doesSplitOk
   }

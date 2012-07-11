@@ -4,8 +4,9 @@ import Prop._
 import Gen._
 import Arbitrary._
 import util._
+import tools.testing.ScalacheckTest
 
-object Test extends Properties("TreeSet") {
+object TreeSetProperties extends ScalacheckTest("TreeSet") {
   def genTreeSet[A: Arbitrary: Ordering]: Gen[TreeSet[A]] =
     for {
       elements <- listOf(arbitrary[A])

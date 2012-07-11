@@ -1,7 +1,10 @@
+package rangeprops
+
 import org.scalacheck._
 import Prop._
 import Gen._
 import Arbitrary._
+import tools.testing.ScalacheckTest
 
 class Counter(r: Range) {
   var cnt = 0L
@@ -231,7 +234,7 @@ object TooLargeRange extends Properties("Too Large Range") {
   }
 }
 
-object Test extends Properties("Range") {
+object RangeProperties extends ScalacheckTest("Range") {
   import org.scalacheck.{ Test => STest }
 
   include(NormalRangeTest)

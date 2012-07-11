@@ -1,4 +1,4 @@
-
+package ctrie
 
 
 import org.scalacheck._
@@ -6,7 +6,7 @@ import Prop._
 import org.scalacheck.Gen._
 import collection._
 import collection.concurrent.TrieMap
-
+import tools.testing.ScalacheckTest
 
 
 case class Wrap(i: Int) {
@@ -16,7 +16,7 @@ case class Wrap(i: Int) {
 
 /** A check mainly oriented towards checking snapshot correctness.
  */
-object Test extends Properties("concurrent.TrieMap") {
+object CtrieProperties extends ScalacheckTest("concurrent.TrieMap") {
   
   /* generators */
   

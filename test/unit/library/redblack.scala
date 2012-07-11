@@ -1,6 +1,9 @@
+package redblackprops
+
 import org.scalacheck._
 import Prop._
 import Gen._
+import tools.testing.ScalacheckTest
 
 /*
 Properties of a Red & Black Tree:
@@ -204,7 +207,7 @@ object TestRange extends RedBlackTest with RedBlackInvariants  {
   }
 }
 
-object Test extends Properties("RedBlack") {
+object RedBlackProperties extends ScalacheckTest("RedBlack") {
   include(TestInsert)
   include(TestModify)
   include(TestDelete)

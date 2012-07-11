@@ -1,8 +1,9 @@
 import org.scalacheck._
 import Gen._
 import Prop._
+import tools.testing.ScalacheckTest
 
-object Test extends Properties("NaN-Ordering") {
+object NanOrderingProperties extends ScalacheckTest("NaN-Ordering") {
 
   val specFloats: Gen[Float] = oneOf(
     Float.MaxValue,

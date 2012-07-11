@@ -2,6 +2,7 @@ import collection.immutable.{RedBlackTree => RB}
 import org.scalacheck._
 import Prop._
 import Gen._
+import tools.testing.ScalacheckTest
 
 /*
 Properties of a Red & Black Tree:
@@ -207,7 +208,7 @@ package scala.collection.immutable.redblacktree {
   }
 }
 
-object Test extends Properties("RedBlackTree") {
+object RedBlackTreeProperties extends ScalacheckTest("RedBlackTree") {
   import collection.immutable.redblacktree._
   include(TestInsert)
   include(TestModify)
