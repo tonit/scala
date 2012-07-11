@@ -276,6 +276,10 @@ INITIALISATION
     <artifact:dependencies pathId="dependency.classpath" filesetId="dependency.fileset">
       <dependency groupId="com.typesafe" artifactId="config" version="0.4.0"/>
     </artifact:dependencies>
+    <artifact:dependencies pathId="junit.classpath" filesetId="junit.fileset">
+      <dependency groupId="junit" artifactId="junit" version="4.8.2"/>
+      <dependency groupId="org.scala-tools.testing" artifactId="test-interface" version="0.5"/>
+    </artifact:dependencies>
   </target>
 
   <!-- Determines OSGi string + maven extension. -->
@@ -1295,6 +1299,7 @@ QUICK BUILD (QUICK)
       <compilationpath>
         <pathelement location="${build-quick.dir}/classes/library"/>
         <pathelement location="${build-quick.dir}/classes/scalacheck"/>
+        <path refid="junit.classpath"/>
       </compilationpath>
     </scalacfork>
     <touch file="${build-quick.dir}/scalacheck.complete" verbose="no"/>
