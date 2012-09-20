@@ -20,7 +20,7 @@ trait ScalaOsgiHelper {
 
   def standardOptions: Array[exam.Option]  = {
     val bundles = (allBundleFiles map makeBundle)
-    bundles ++ Array[exam.Option](felix(), equinox(), junitBundles())
+    bundles ++ Array[exam.Option](junitBundles())
   }
 
   def justReflectionOptions: Array[exam.Option]  = {
